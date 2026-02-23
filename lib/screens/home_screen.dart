@@ -18,13 +18,16 @@ class _HomeScreenState extends State<HomeScreen> {
   String searchQuery = "";
   bool sortHighToLow = true;
 
+  final List<String> categories = ["All", "General", "Work", "Personal", "Shopping"];
+
   @override
   void initState() {
     super.initState();
     _loadTodos();
   }
 
-  // Add/Edit todo
+  // ================= TODO OPERATIONS =================
+
   void addOrEditTodo({
     Todo? todo,
     int? index,
@@ -56,7 +59,6 @@ class _HomeScreenState extends State<HomeScreen> {
     _saveTodos();
   }
 
-  // Toggle completion
   void toggleTodo(int index) {
     setState(() {
       todos[index].isDone = !todos[index].isDone;
@@ -65,16 +67,14 @@ class _HomeScreenState extends State<HomeScreen> {
     _saveTodos();
   }
 
-  // Delete with undo
   void deleteTodoAt(int index) {
     final removed = todos[index];
-    setState(() {
-      todos.removeAt(index);
-    });
+    setState(() => todos.removeAt(index));
     _saveTodos();
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: const Text("Task deleted!"),
+        content: const Text("Task deleted"),
         action: SnackBarAction(
           label: "UNDO",
           onPressed: () {
@@ -89,279 +89,195 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // Sort todos
   void _sortTodos() {
     todos.sort((a, b) {
       if (a.isDone && !b.isDone) return 1;
       if (!a.isDone && b.isDone) return -1;
-      if (sortHighToLow) {
-        if (a.priority != b.priority) return a.priority - b.priority;
-      } else {
-        if (a.priority != b.priority) return b.priority - a.priority;
-      }
-      if (a.dueDate != null && b.dueDate != null) {
-        return a.dueDate!.compareTo(b.dueDate!);
-      }
-      return 0;
+      return sortHighToLow ? a.priority - b.priority : b.priority - a.priority;
     });
   }
 
-  // Load & save todos
+  // ================= STORAGE =================
+
   void _loadTodos() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    String? todosString = prefs.getString('todos');
+    final prefs = await SharedPreferences.getInstance();
+    final todosString = prefs.getString('todos');
+
     if (todosString != null) {
-      List decoded = jsonDecode(todosString);
+      final decoded = jsonDecode(todosString);
       setState(() {
-        todos = decoded.map((t) => Todo.fromMap(t)).toList();
+        todos = decoded.map<Todo>((t) => Todo.fromMap(t)).toList();
         _sortTodos();
       });
     }
   }
 
   void _saveTodos() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    List encoded = todos.map((t) => t.toMap()).toList();
+    final prefs = await SharedPreferences.getInstance();
+    final encoded = todos.map((t) => t.toMap()).toList();
     prefs.setString('todos', jsonEncode(encoded));
   }
 
-  // Show Add/Edit Dialog
-  void showAddDialog({Todo? todo, int? index}) {
-    TextEditingController controller = TextEditingController();
-    controller.text = todo?.title ?? "";
+  // ================= ADD / EDIT DIALOG =================
 
+  void showAddDialog({Todo? todo, int? index}) {
+    final controller = TextEditingController(text: todo?.title ?? "");
     String selectedCategory = todo?.category ?? "General";
     int selectedPriority = todo?.priority ?? 2;
-    DateTime? selectedDate = todo?.dueDate;
 
     showDialog(
       context: context,
-      builder: (_) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          title: Text(todo == null ? "Add Task" : "Edit Task"),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: controller,
-                  decoration: const InputDecoration(hintText: "Enter task title"),
-                  autofocus: true,
-                ),
-                const SizedBox(height: 10),
-                DropdownButtonFormField<String>(
-                  value: selectedCategory,
-                  items: ["General", "Work", "Personal", "Shopping"]
-                      .map((c) => DropdownMenuItem(value: c, child: Text(c)))
-                      .toList(),
-                  onChanged: (value) => setState(() => selectedCategory = value!),
-                  decoration: const InputDecoration(labelText: "Category"),
-                ),
-                const SizedBox(height: 10),
-                DropdownButtonFormField<int>(
-                  value: selectedPriority,
-                  items: const [
-                    DropdownMenuItem(value: 1, child: Text("High")),
-                    DropdownMenuItem(value: 2, child: Text("Medium")),
-                    DropdownMenuItem(value: 3, child: Text("Low")),
-                  ],
-                  onChanged: (value) => setState(() => selectedPriority = value!),
-                  decoration: const InputDecoration(labelText: "Priority"),
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    const Text("Due Date: "),
-                    Text(selectedDate != null
-                        ? "${selectedDate?.toLocal().toString().split(' ')[0]}"
-                        : "None"),
-                    IconButton(
-                      icon: const Icon(Icons.calendar_today),
-                      onPressed: () async {
-                        DateTime? picked = await showDatePicker(
-                          context: context,
-                          initialDate: selectedDate ?? DateTime.now(),
-                          firstDate: DateTime.now(),
-                          lastDate: DateTime(2100),
-                        );
-                        if (picked != null) setState(() => selectedDate = picked);
-                      },
-                    )
-                  ],
-                ),
-              ],
+      builder: (_) => AlertDialog(
+        title: Text(todo == null ? "Add Task" : "Edit Task"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(controller: controller, decoration: const InputDecoration(hintText: "Task title")),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              value: selectedCategory,
+              items: categories
+                  .where((c) => c != "All")
+                  .map((c) => DropdownMenuItem(value: c, child: Text(c)))
+                  .toList(),
+              onChanged: (v) => selectedCategory = v!,
+              decoration: const InputDecoration(labelText: "Category"),
             ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
-            ElevatedButton(
-              onPressed: () {
-                if (controller.text.trim().isEmpty) return;
-                addOrEditTodo(
-                  todo: todo,
-                  index: index,
-                  title: controller.text.trim(),
-                  category: selectedCategory,
-                  priority: selectedPriority,
-                  dueDate: selectedDate,
-                );
-                Navigator.pop(context);
-              },
-              child: Text(todo == null ? "Add" : "Save"),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<int>(
+              value: selectedPriority,
+              items: const [
+                DropdownMenuItem(value: 1, child: Text("High")),
+                DropdownMenuItem(value: 2, child: Text("Medium")),
+                DropdownMenuItem(value: 3, child: Text("Low")),
+              ],
+              onChanged: (v) => selectedPriority = v!,
+              decoration: const InputDecoration(labelText: "Priority"),
             ),
           ],
         ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+          ElevatedButton(
+            onPressed: () {
+              if (controller.text.trim().isEmpty) return;
+              addOrEditTodo(
+                todo: todo,
+                index: index,
+                title: controller.text.trim(),
+                category: selectedCategory,
+                priority: selectedPriority,
+              );
+              Navigator.pop(context);
+            },
+            child: Text(todo == null ? "Add" : "Save"),
+          )
+        ],
       ),
     );
   }
 
-  Color getTitleColor(Todo todo) {
-    if (todo.dueDate == null) return Colors.black;
-    final today = DateTime.now();
-    final due = todo.dueDate!.toLocal();
-    if (due.isBefore(today) && !todo.isDone) return Colors.red;
-    if (due.year == today.year &&
-        due.month == today.month &&
-        due.day == today.day &&
-        !todo.isDone) return Colors.orange;
-    return Colors.black;
-  }
+  // ================= UI =================
 
   @override
   Widget build(BuildContext context) {
-    List<Todo> filteredTodos = todos.where((t) {
+    final filteredTodos = todos.where((t) {
       final matchesCategory = selectedFilter == "All" || t.category == selectedFilter;
       final matchesSearch = t.title.toLowerCase().contains(searchQuery.toLowerCase());
       return matchesCategory && matchesSearch;
     }).toList();
 
-    List<DateTime> dueDates = todos
-        .where((t) => t.dueDate != null)
-        .map((t) => t.dueDate!.toLocal())
-        .toSet()
-        .toList()
-      ..sort();
-
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text("My Todo List"),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.sort),
-              onPressed: () {
-                setState(() {
-                  sortHighToLow = !sortHighToLow;
-                  _sortTodos();
-                });
-              },
-            ),
-            IconButton(
-              icon: const Icon(Icons.dark_mode),
-              onPressed: () => MyApp.of(context).toggleTheme(),
-            ),
-          ],
-          bottom: const TabBar(
-            tabs: [
-              Tab(text: "Tasks"),
-              Tab(text: "Calendar"),
-            ],
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("My Tasks"),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.sort),
+            onPressed: () {
+              setState(() {
+                sortHighToLow = !sortHighToLow;
+                _sortTodos();
+              });
+            },
           ),
-        ),
-        body: TabBarView(
-          children: [
-            Column(
-              children: [
-                // Search bar
-                Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: TextField(
-                    decoration: const InputDecoration(
-                      hintText: "Search tasks...",
-                      prefixIcon: Icon(Icons.search),
-                      border: OutlineInputBorder(),
-                    ),
-                    onChanged: (value) => setState(() => searchQuery = value),
-                  ),
-                ),
-                // Category filter
-                Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: DropdownButton<String>(
-                    value: selectedFilter,
-                    items: ["All", "General", "Work", "Personal", "Shopping"]
-                        .map((c) => DropdownMenuItem(value: c, child: Text(c)))
-                        .toList(),
-                    onChanged: (value) {
-                      setState(() => selectedFilter = value!);
-                    },
-                  ),
-                ),
-                Expanded(
-                  child: filteredTodos.isEmpty
-                      ? const Center(child: Text("No tasks for this filter/search"))
-                      : ReorderableListView.builder(
-                          itemCount: filteredTodos.length,
-                          itemBuilder: (context, index) {
-                            final todo = filteredTodos[index];
-                            return Dismissible(
-                              key: Key(todo.id),
-                              background: Container(
-                                color: Colors.red,
-                                alignment: Alignment.centerRight,
-                                padding: const EdgeInsets.symmetric(horizontal: 20),
-                                child: const Icon(Icons.delete, color: Colors.white),
-                              ),
-                              direction: DismissDirection.endToStart,
-                              onDismissed: (_) => deleteTodoAt(todos.indexOf(todo)),
-                              child: TodoTile(
-                                todo: todo,
-                                onTap: () => toggleTodo(todos.indexOf(todo)),
-                                onEdit: () => showAddDialog(
-                                    todo: todo, index: todos.indexOf(todo)),
-                                onDelete: () => deleteTodoAt(todos.indexOf(todo)),
-                              ),
-                            );
-                          },
-                          onReorder: (oldIndex, newIndex) {
-                            setState(() {
-                              if (newIndex > oldIndex) newIndex -= 1;
-                              final item = todos.removeAt(oldIndex);
-                              todos.insert(newIndex, item);
-                            });
-                            _saveTodos();
-                          },
-                        ),
-                ),
-              ],
+          IconButton(
+            icon: const Icon(Icons.dark_mode),
+            onPressed: () => MyApp.of(context).toggleTheme(),
+          ),
+        ],
+      ),
+
+      body: Column(
+        children: [
+          // 🔎 SEARCH
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: TextField(
+              decoration: const InputDecoration(
+                hintText: "Search tasks...",
+                prefixIcon: Icon(Icons.search),
+              ),
+              onChanged: (v) => setState(() => searchQuery = v),
             ),
-            // Calendar tab
-            ListView.builder(
-              itemCount: dueDates.length,
-              itemBuilder: (context, index) {
-                final date = dueDates[index];
-                final tasksForDate =
-                    todos.where((t) => t.dueDate?.toLocal() == date).toList();
-                return ExpansionTile(
-                  title: Text("${date.toString().split(' ')[0]}"),
-                  children: tasksForDate
-                      .map((t) => TodoTile(
-                            todo: t,
-                            onTap: () => toggleTodo(todos.indexOf(t)),
-                            onEdit: () => showAddDialog(todo: t, index: todos.indexOf(t)),
-                            onDelete: () => deleteTodoAt(todos.indexOf(t)),
-                          ))
-                      .toList(),
+          ),
+
+          // 🏷 CATEGORY CHIPS
+          SizedBox(
+            height: 45,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              itemCount: categories.length,
+              itemBuilder: (_, i) {
+                final category = categories[i];
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: ChoiceChip(
+                    label: Text(category),
+                    selected: selectedFilter == category,
+                    onSelected: (_) => setState(() => selectedFilter = category),
+                  ),
                 );
               },
             ),
-          ],
-        ),
-        floatingActionButton: FloatingActionButton(
-          onPressed: () => showAddDialog(),
-          child: const Icon(Icons.add),
-        ),
+          ),
+
+          const SizedBox(height: 10),
+
+          // 📋 TASK LIST
+          Expanded(
+            child: filteredTodos.isEmpty
+                ? const Center(child: Text("No tasks found"))
+                : ReorderableListView.builder(
+                    padding: const EdgeInsets.only(bottom: 80),
+                    itemCount: filteredTodos.length,
+                    itemBuilder: (context, index) {
+                      final todo = filteredTodos[index];
+                      return TodoTile(
+                        key: Key(todo.id),
+                        todo: todo,
+                        onTap: () => toggleTodo(todos.indexOf(todo)),
+                        onDelete: () => deleteTodoAt(todos.indexOf(todo)),
+                        onEdit: () => showAddDialog(todo: todo, index: todos.indexOf(todo)),
+                      );
+                    },
+                    onReorder: (oldIndex, newIndex) {
+                      setState(() {
+                        if (newIndex > oldIndex) newIndex--;
+                        final item = todos.removeAt(oldIndex);
+                        todos.insert(newIndex, item);
+                      });
+                      _saveTodos();
+                    },
+                  ),
+          ),
+        ],
+      ),
+
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => showAddDialog(),
+        label: const Text("Add Task"),
+        icon: const Icon(Icons.add),
       ),
     );
   }

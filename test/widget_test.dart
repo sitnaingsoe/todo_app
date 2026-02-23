@@ -1,42 +1,48 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:todo_app/main.dart';
-import 'package:todo_app/screens/home_screen.dart';
 
 void main() {
-  testWidgets('Add and toggle a todo item', (WidgetTester tester) async {
-    // Build the app and trigger a frame
-    await tester.pumpWidget(MyApp(isDarkMode: false)); // ✅ pass isDarkMode
-
-    // Verify that the HomeScreen shows "No tasks yet"
-    expect(find.text('No tasks yet.\nTap + to add one!'), findsOneWidget);
-
-    // Tap the floating action button to add a todo
-    await tester.tap(find.byType(FloatingActionButton));
+  testWidgets('Add, toggle, and delete a todo item', (WidgetTester tester) async {
+    // Build the app
+    await tester.pumpWidget(const MyApp());
     await tester.pumpAndSettle();
 
-    // Enter a todo title
-    await tester.enterText(find.byType(TextField), 'Test Todo');
+    // ✅ Verify empty state is shown
+    expect(find.text('No tasks found'), findsOneWidget);
+
+    // ✅ Tap the "Add Task" button (Extended FAB)
+    await tester.tap(find.text('Add Task'));
+    await tester.pumpAndSettle();
+
+    // ✅ Enter a todo title
+    await tester.enterText(find.byType(TextField).first, 'Test Todo');
+
+    // ✅ Tap Add button in dialog
     await tester.tap(find.text('Add'));
     await tester.pumpAndSettle();
 
-    // Verify that the new todo appears in the list
+    // ✅ Verify that the new todo appears
     expect(find.text('Test Todo'), findsOneWidget);
 
-    // Tap the todo to toggle completion
+    // ✅ Tap the todo to toggle completion
     await tester.tap(find.text('Test Todo'));
     await tester.pump();
 
-    // Verify that the text now has strikethrough (isDone toggled)
-    Text todoText =
-        tester.widget<Text>(find.text('Test Todo').first);
-    expect(todoText.style!.decoration, TextDecoration.lineThrough);
+    // ✅ Verify strikethrough is applied (task completed)
+    final textFinder = find.text('Test Todo').first;
+    final Text todoText = tester.widget(textFinder);
+    expect(todoText.style?.decoration, TextDecoration.lineThrough);
 
-    // Delete the todo
-    await tester.tap(find.byIcon(Icons.delete));
+    // ✅ Open popup menu (three dots)
+    await tester.tap(find.byIcon(Icons.more_vert));
     await tester.pumpAndSettle();
 
-    // Verify that the list is empty again
-    expect(find.text('No tasks yet.\nTap + to add one!'), findsOneWidget);
+    // ✅ Tap Delete option
+    await tester.tap(find.text('Delete'));
+    await tester.pumpAndSettle();
+
+    // ✅ Verify list is empty again
+    expect(find.text('No tasks found'), findsOneWidget);
   });
 }
