@@ -4,8 +4,6 @@ import 'screens/home_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // Load saved theme preference
   SharedPreferences prefs = await SharedPreferences.getInstance();
   bool isDarkMode = prefs.getBool('isDarkMode') ?? false;
 
@@ -16,7 +14,6 @@ class MyApp extends StatefulWidget {
   final bool isDarkMode;
   const MyApp({super.key, required this.isDarkMode});
 
-  // Access MyApp state from child widgets
   static _MyAppState of(BuildContext context) =>
       context.findAncestorStateOfType<_MyAppState>()!;
 
@@ -34,9 +31,11 @@ class _MyAppState extends State<MyApp> {
   }
 
   void toggleTheme() async {
-    setState(() => isDarkMode = !isDarkMode);
+    setState(() {
+      isDarkMode = !isDarkMode;
+    });
     SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('isDarkMode', isDarkMode);
+    prefs.setBool('isDarkMode', isDarkMode);
   }
 
   @override

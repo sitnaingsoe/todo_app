@@ -4,7 +4,7 @@ class Todo {
   final String id;
   String title;
   String category;
-  int priority; // 1 = High, 2 = Medium, 3 = Low
+  int priority;
   DateTime? dueDate;
   bool isDone;
 
@@ -17,18 +17,25 @@ class Todo {
     this.isDone = false,
   }) : id = id ?? const Uuid().v4();
 
-  bool get isOverdue {
-    if (dueDate == null) return false;
-    final now = DateTime.now();
-    return !isDone && dueDate!.isBefore(now);
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'title': title,
+      'category': category,
+      'priority': priority,
+      'dueDate': dueDate?.toIso8601String(),
+      'isDone': isDone,
+    };
   }
 
-  bool get isToday {
-    if (dueDate == null) return false;
-    final now = DateTime.now();
-    return !isDone &&
-        dueDate!.year == now.year &&
-        dueDate!.month == now.month &&
-        dueDate!.day == now.day;
+  factory Todo.fromMap(Map<String, dynamic> map) {
+    return Todo(
+      id: map['id'],
+      title: map['title'],
+      category: map['category'],
+      priority: map['priority'],
+      dueDate: map['dueDate'] != null ? DateTime.parse(map['dueDate']) : null,
+      isDone: map['isDone'] ?? false,
+    );
   }
 }
