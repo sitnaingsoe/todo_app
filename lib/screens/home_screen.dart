@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:convert';
 import '../models/to_do.dart';
 import '../widgets/to_do_title.dart';
 import '../main.dart';
+import '../services/api_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -23,70 +22,90 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _loadTodos();
+    _loadTodosFromApi();
   }
 
-  // ================= TODO OPERATIONS =================
+  // ================= API + LOCAL UI =================
 
-  void addOrEditTodo({
+  Future<void> _loadTodosFromApi() async {
+    try {
+      final fetched = await ApiService.getTodos();
+      setState(() {
+        todos = fetched;
+        _sortTodos();
+      });
+    } catch (e) {
+      // Handle errors here
+      debugPrint("Failed to load todos: $e");
+    }
+  }
+
+  Future<void> addOrEditTodoApi({
     Todo? todo,
-    int? index,
     required String title,
     required String category,
     required int priority,
     DateTime? dueDate,
-  }) {
-    setState(() {
-      if (todo == null) {
-        todos.add(Todo(
-          title: title,
-          category: category,
-          priority: priority,
-          dueDate: dueDate,
-        ));
-      } else {
-        todos[index!] = Todo(
-          id: todo.id,
-          title: title,
-          category: category,
-          priority: priority,
-          dueDate: dueDate,
-          isDone: todo.isDone,
-        );
-      }
-      _sortTodos();
-    });
-    _saveTodos();
+  }) async {
+    if (todo == null) {
+      // Add new todo
+      final newTodo = Todo(
+        title: title,
+        category: category,
+        priority: priority,
+        dueDate: dueDate,
+      );
+
+      final addedTodo = await ApiService.addTodo(newTodo);
+
+      setState(() {
+        todos.add(addedTodo);
+        _sortTodos();
+      });
+    } else {
+      // Edit existing
+      final updatedTodo = Todo(
+        id: todo.id,
+        title: title,
+        category: category,
+        priority: priority,
+        dueDate: dueDate,
+        isDone: todo.isDone,
+      );
+      await ApiService.updateTodo(updatedTodo);
+
+      setState(() {
+        final index = todos.indexWhere((t) => t.id == todo.id);
+        if (index != -1) {
+          todos[index] = updatedTodo;
+          _sortTodos();
+        }
+      });
+    }
   }
 
-  void toggleTodo(int index) {
-    setState(() {
-      todos[index].isDone = !todos[index].isDone;
-      _sortTodos();
-    });
-    _saveTodos();
-  }
-
-  void deleteTodoAt(int index) {
-    final removed = todos[index];
-    setState(() => todos.removeAt(index));
-    _saveTodos();
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text("Task deleted"),
-        action: SnackBarAction(
-          label: "UNDO",
-          onPressed: () {
-            setState(() {
-              todos.insert(index, removed);
-              _sortTodos();
-            });
-            _saveTodos();
-          },
-        ),
-      ),
+  Future<void> toggleTodoApi(Todo todo) async {
+    final updatedTodo = Todo(
+      id: todo.id,
+      title: todo.title,
+      category: todo.category,
+      priority: todo.priority,
+      dueDate: todo.dueDate,
+      isDone: !todo.isDone,
     );
+    await ApiService.updateTodo(updatedTodo);
+    setState(() {
+      final index = todos.indexWhere((t) => t.id == todo.id);
+      if (index != -1) {
+        todos[index] = updatedTodo;
+        _sortTodos();
+      }
+    });
+  }
+
+  Future<void> deleteTodoApi(Todo todo) async {
+    await ApiService.deleteTodo(todo.id);
+    setState(() => todos.removeWhere((t) => t.id == todo.id));
   }
 
   void _sortTodos() {
@@ -97,82 +116,91 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  // ================= STORAGE =================
-
-  void _loadTodos() async {
-    final prefs = await SharedPreferences.getInstance();
-    final todosString = prefs.getString('todos');
-
-    if (todosString != null) {
-      final decoded = jsonDecode(todosString);
-      setState(() {
-        todos = decoded.map<Todo>((t) => Todo.fromMap(t)).toList();
-        _sortTodos();
-      });
-    }
-  }
-
-  void _saveTodos() async {
-    final prefs = await SharedPreferences.getInstance();
-    final encoded = todos.map((t) => t.toMap()).toList();
-    prefs.setString('todos', jsonEncode(encoded));
-  }
-
   // ================= ADD / EDIT DIALOG =================
 
-  void showAddDialog({Todo? todo, int? index}) {
+  void showAddDialog({Todo? todo}) {
     final controller = TextEditingController(text: todo?.title ?? "");
     String selectedCategory = todo?.category ?? "General";
     int selectedPriority = todo?.priority ?? 2;
+    DateTime? selectedDate = todo?.dueDate;
 
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
-        title: Text(todo == null ? "Add Task" : "Edit Task"),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(controller: controller, decoration: const InputDecoration(hintText: "Task title")),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              value: selectedCategory,
-              items: categories
-                  .where((c) => c != "All")
-                  .map((c) => DropdownMenuItem(value: c, child: Text(c)))
-                  .toList(),
-              onChanged: (v) => selectedCategory = v!,
-              decoration: const InputDecoration(labelText: "Category"),
-            ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<int>(
-              value: selectedPriority,
-              items: const [
-                DropdownMenuItem(value: 1, child: Text("High")),
-                DropdownMenuItem(value: 2, child: Text("Medium")),
-                DropdownMenuItem(value: 3, child: Text("Low")),
+      builder: (_) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: Text(todo == null ? "Add Task" : "Edit Task"),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: controller,
+                  decoration: const InputDecoration(hintText: "Task title"),
+                  autofocus: true,
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: selectedCategory,
+                  items: categories
+                      .where((c) => c != "All")
+                      .map((c) => DropdownMenuItem(value: c, child: Text(c)))
+                      .toList(),
+                  onChanged: (v) => setState(() => selectedCategory = v ?? "General"),
+                  decoration: const InputDecoration(labelText: "Category"),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<int>(
+                  value: selectedPriority,
+                  items: const [
+                    DropdownMenuItem(value: 1, child: Text("High")),
+                    DropdownMenuItem(value: 2, child: Text("Medium")),
+                    DropdownMenuItem(value: 3, child: Text("Low")),
+                  ],
+                  onChanged: (v) => setState(() => selectedPriority = v ?? 2),
+                  decoration: const InputDecoration(labelText: "Priority"),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    const Text("Due Date: "),
+                    Text(selectedDate != null
+                        ? "${selectedDate?.toLocal().toString().split(' ')[0]}"
+                        : "None"),
+                    IconButton(
+                      icon: const Icon(Icons.calendar_today),
+                      onPressed: () async {
+                        final picked = await showDatePicker(
+                          context: context,
+                          initialDate: selectedDate ?? DateTime.now(),
+                          firstDate: DateTime.now(),
+                          lastDate: DateTime(2100),
+                        );
+                        if (picked != null) setState(() => selectedDate = picked);
+                      },
+                    )
+                  ],
+                ),
               ],
-              onChanged: (v) => selectedPriority = v!,
-              decoration: const InputDecoration(labelText: "Priority"),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+            ElevatedButton(
+              onPressed: () async {
+                if (controller.text.trim().isEmpty) return;
+                await addOrEditTodoApi(
+                  todo: todo,
+                  title: controller.text.trim(),
+                  category: selectedCategory,
+                  priority: selectedPriority,
+                  dueDate: selectedDate,
+                );
+                Navigator.pop(context);
+              },
+              child: Text(todo == null ? "Add" : "Save"),
             ),
           ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
-          ElevatedButton(
-            onPressed: () {
-              if (controller.text.trim().isEmpty) return;
-              addOrEditTodo(
-                todo: todo,
-                index: index,
-                title: controller.text.trim(),
-                category: selectedCategory,
-                priority: selectedPriority,
-              );
-              Navigator.pop(context);
-            },
-            child: Text(todo == null ? "Add" : "Save"),
-          )
-        ],
       ),
     );
   }
@@ -256,9 +284,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       return TodoTile(
                         key: Key(todo.id),
                         todo: todo,
-                        onTap: () => toggleTodo(todos.indexOf(todo)),
-                        onDelete: () => deleteTodoAt(todos.indexOf(todo)),
-                        onEdit: () => showAddDialog(todo: todo, index: todos.indexOf(todo)),
+                        onTap: () => toggleTodoApi(todo),
+                        onDelete: () => deleteTodoApi(todo),
+                        onEdit: () => showAddDialog(todo: todo),
                       );
                     },
                     onReorder: (oldIndex, newIndex) {
@@ -267,7 +295,6 @@ class _HomeScreenState extends State<HomeScreen> {
                         final item = todos.removeAt(oldIndex);
                         todos.insert(newIndex, item);
                       });
-                      _saveTodos();
                     },
                   ),
           ),

@@ -1,41 +1,44 @@
-import 'package:uuid/uuid.dart';
-
 class Todo {
   final String id;
-  String title;
-  String category;
-  int priority;
-  DateTime? dueDate;
+  final String title;    // required
+  final String category; // required
+  final int priority;    // required
   bool isDone;
+  DateTime? dueDate;
 
   Todo({
-    String? id,
+    this.id = '',
     required this.title,
-    this.category = "General",
-    this.priority = 2,
-    this.dueDate,
+    required this.category,
+    required this.priority,
     this.isDone = false,
-  }) : id = id ?? const Uuid().v4();
+    this.dueDate,
+  });
 
-  Map<String, dynamic> toMap() {
+  // ================= FROM JSON (API → APP)
+
+  factory Todo.fromJson(Map<String, dynamic> json) {
+    return Todo(
+      id: json['id'].toString(),
+      title: json['title'] ?? '',
+      category: json['category'] ?? 'General',
+      priority: json['priority'] ?? 2,
+      isDone: json['isDone'] ?? false,
+      dueDate:
+          json['dueDate'] != null ? DateTime.parse(json['dueDate']) : null,
+    );
+  }
+
+  // ================= TO JSON (APP → API)
+
+  Map<String, dynamic> toJson() {
     return {
       'id': id,
       'title': title,
       'category': category,
       'priority': priority,
-      'dueDate': dueDate?.toIso8601String(),
       'isDone': isDone,
+      'dueDate': dueDate?.toIso8601String(),
     };
-  }
-
-  factory Todo.fromMap(Map<String, dynamic> map) {
-    return Todo(
-      id: map['id'],
-      title: map['title'],
-      category: map['category'],
-      priority: map['priority'],
-      dueDate: map['dueDate'] != null ? DateTime.parse(map['dueDate']) : null,
-      isDone: map['isDone'] ?? false,
-    );
   }
 }
